@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   parseOmarchyColorsToml,
@@ -11,6 +13,7 @@ import {
   buildOmarchyStylesheet,
   buildOmarchyThemeManifest,
 } from '../src/omarchy-colors.mjs';
+import { syncVaultThemeSettings } from '../scripts/sync-vault-settings.mjs';
 
 const manifestPath = fileURLToPath(new URL('../manifest.json', import.meta.url));
 const stylesPath = fileURLToPath(new URL('../styles.css', import.meta.url));
@@ -50,7 +53,7 @@ test('shipped manifest.json and styles.css conform to Ovata Plugin API v1 extens
   assert.equal(manifest.apiVersion, 1);
   assert.equal(manifest.id, 'omarchy-theme');
   assert.equal(manifest.name, 'Omarchy Theme');
-  assert.equal(manifest.version, '1.1.0');
+  assert.equal(manifest.version, '1.2.0');
   assert.equal(manifest.kind, 'extension');
   assert.equal(manifest.entry, 'main.js');
   assert.equal(manifest.styles, 'styles.css');
@@ -165,4 +168,43 @@ test('rejects invalid hex values, CSS functions, prototype-pollution keys, and u
     () => buildOmarchyThemeManifest(withoutRed),
     /Invalid hex color for red/,
   );
+});
+
+test('syncVaultThemeSettings writes active Omarchy theme while preserving user sourceMode and manualPresetId', () => {
+  const scratchVault = mkdtempSync(join(tmpdir(), 'TestVault-omarchy-sync-'));
+  try {
+    const parsed = parseOmarchyColorsToml(EVERFOREST_SAMPLE);
+    const palette = resolveOmarchyPalette(parsed);
+    const tokens = buildOvataTokenMap(palette);
+
+    const first = syncVaultThemeSettings(scratchVault, {
+      slug: 'everforest',
+      name: 'Everforest',
+      mode: 'dark',
+      tokens,
+    });
+    assert.equal(first.nextSettings.sourceMode, 'follow-omarchy');
+    assert.equal(first.nextSettings.manualPresetId, 'everforest');
+    assert.equal(first.nextSettings.omarchyPresetId, 'everforest');
+
+    // Simulate user switching to manual mode ("tokyo-night") in Ovata
+    const persisted = JSON.parse(readFileSync(first.settingsPath, 'utf8'));
+    persisted.sourceMode = 'manual';
+    persisted.manualPresetId = 'tokyo-night';
+    writeFileSync(first.settingsPath, JSON.stringify(persisted, null, 2));
+
+    // When Omarchy switches system theme to "ethereal", user's manual choice is preserved
+    const second = syncVaultThemeSettings(scratchVault, {
+      slug: 'ethereal',
+      name: 'Ethereal',
+      mode: 'dark',
+      tokens,
+    });
+    assert.equal(second.nextSettings.sourceMode, 'manual');
+    assert.equal(second.nextSettings.manualPresetId, 'tokyo-night');
+    assert.equal(second.nextSettings.omarchyPresetId, 'ethereal');
+    assert.equal(second.nextSettings.omarchyName, 'Ethereal');
+  } finally {
+    rmSync(scratchVault, { recursive: true, force: true });
+  }
 });

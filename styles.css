@@ -1,4 +1,4 @@
-/* Generated from Omarchy active theme: Ethereal (dark) */
+/* Generated from Omarchy active theme: Gruvbox (dark) */
 :root,
 body,
 body.theme-dark,
@@ -10,43 +10,43 @@ body.theme-tokyonight,
 .app-container.theme-light,
 .app-container.theme-rain,
 .app-container.theme-tokyonight {
-  --bg-dark: #060b1e !important;
-  --bg-panel: #040816 !important;
-  --text-main: #ffcead !important;
-  --text-muted: #c9b8a6 !important;
-  --accent: #7d82d9 !important;
-  --selection: #252e56 !important;
-  --border: #6d7db6 !important;
+  --bg-dark: #282828 !important;
+  --bg-panel: #1e1e1e !important;
+  --text-main: #d4be98 !important;
+  --text-muted: #bdae93 !important;
+  --accent: #7daea3 !important;
+  --selection: #504945 !important;
+  --border: #665c54 !important;
   --bg-image: none !important;
   --bg-opacity: 1 !important;
-  --bg-base: #040816 !important;
-  --bg-elevated: #131a3a !important;
-  --border-elevated: #6d7db6 !important;
-  --border-toolbar: #6d7db6 !important;
-  --border-subtle: #131a3a !important;
-  --surface-active: #252e56 !important;
-  --surface-sunken: #030610a6 !important;
-  --surface-floating: #060b1eeb !important;
-  --accent-primary: #7d82d9 !important;
-  --on-accent: #030610 !important;
-  --accent-success: #92a593 !important;
-  --text-elevated: #ffcead !important;
-  --text-bright: #ffcead !important;
-  --text-faint: #c9b8a6 !important;
-  --danger: #ed5b5a !important;
-  --file-folder: #e9bb4f !important;
-  --file-markdown: #7d82d9 !important;
-  --file-note: #92a593 !important;
-  --file-mindmap: #c89dc1 !important;
-  --file-pdfnote: #ed5b5a !important;
-  --node-bg: #131a3a !important;
-  --node-glow: #7d82d944 !important;
-  --md-heading: #ffcead !important;
-  --md-bold: #7d82d9 !important;
-  --md-italic: #c89dc1 !important;
-  --md-link: #a3bfd1 !important;
-  --md-url: #92a593 !important;
-  --md-code-bg: #040816 !important;
+  --bg-base: #1e1e1e !important;
+  --bg-elevated: #3c3836 !important;
+  --border-elevated: #665c54 !important;
+  --border-toolbar: #665c54 !important;
+  --border-subtle: #3c3836 !important;
+  --surface-active: #504945 !important;
+  --surface-sunken: #161616a6 !important;
+  --surface-floating: #282828eb !important;
+  --accent-primary: #7daea3 !important;
+  --on-accent: #161616 !important;
+  --accent-success: #a9b665 !important;
+  --text-elevated: #d4be98 !important;
+  --text-bright: #d4be98 !important;
+  --text-faint: #bdae93 !important;
+  --danger: #ea6962 !important;
+  --file-folder: #d8a657 !important;
+  --file-markdown: #7daea3 !important;
+  --file-note: #a9b665 !important;
+  --file-mindmap: #d3869b !important;
+  --file-pdfnote: #ea6962 !important;
+  --node-bg: #3c3836 !important;
+  --node-glow: #7daea344 !important;
+  --md-heading: #d4be98 !important;
+  --md-bold: #7daea3 !important;
+  --md-italic: #d3869b !important;
+  --md-link: #89b482 !important;
+  --md-url: #a9b665 !important;
+  --md-code-bg: #1e1e1e !important;
 }
 
 body .file-manager,

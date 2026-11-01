@@ -1,7 +1,7 @@
 {
   "name": "omarchy-theme",
-  "version": "1.1.0",
-  "description": "Ovata theme extension generated from the active Omarchy Linux desktop palette.",
+  "version": "1.2.0",
+  "description": "Ovata theme extension that automatically follows the active Omarchy desktop theme or lets you choose any of the 22 Omarchy presets manually.",
   "license": "MIT",
   "author": "L3SSE",
   "type": "module",
@@ -10,6 +10,7 @@
   },
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "sync": "node scripts/sync-omarchy-theme.mjs --write"
+    "sync": "node scripts/sync-omarchy-theme.mjs --write",
+    "install-hook": "bash scripts/install-omarchy-hook.sh"
   }
 }

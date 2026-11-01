@@ -5,7 +5,17 @@ import {
   type OmarchyPreset,
 } from './src/active-palette.ts';
 
+type ThemeSourceMode = 'follow-omarchy' | 'manual';
+
 interface StoredThemeSettings {
+  sourceMode?: ThemeSourceMode;
+  manualPresetId?: string;
+  omarchyPresetId?: string;
+  omarchyName?: string;
+  omarchyMode?: 'dark' | 'light';
+  omarchyTokens?: Record<string, string>;
+  updatedAt?: string;
+  // Legacy v1.1.0 compatibility fields:
   presetId?: string;
   customTokens?: Record<string, string>;
   customName?: string;
@@ -13,6 +23,7 @@ interface StoredThemeSettings {
 }
 
 const HEX_OR_SAFE_TOKEN_RE = /^(?:#(?:[a-fA-F0-9]{6}|[a-fA-F0-9]{8})|none|1)$/;
+const POLL_INTERVAL_MS = 1500;
 
 function isSafeTokenMap(value: unknown): value is Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -30,12 +41,19 @@ definePlugin((sdk) => {
   const { React } = sdk;
   let disposed = false;
   let loadedBaseline: unknown = null;
-  let currentPreset: OmarchyPreset =
+  const fallbackPreset: OmarchyPreset =
     OMARCHY_PRESETS[DEFAULT_OMARCHY_PRESET_KEY] ??
     Object.values(OMARCHY_PRESETS)[0];
-  let lastError: string | null = null;
-  const subscribers = new Set<() => void>();
 
+  let sourceMode: ThemeSourceMode = 'follow-omarchy';
+  let manualPresetId: string = fallbackPreset.id;
+  let omarchyLivePreset: OmarchyPreset = fallbackPreset;
+  let appliedPreset: OmarchyPreset = fallbackPreset;
+  let lastAppliedSignature = '';
+  let lastError: string | null = null;
+  let pollInFlight = false;
+
+  const subscribers = new Set<() => void>();
   const notify = () => {
     for (const sub of subscribers) sub();
   };
@@ -66,34 +84,40 @@ definePlugin((sdk) => {
     return `:root, body, body.theme-dark, body.theme-light, body.theme-rain, body.theme-tokyonight, .app-container, .app-container.theme-dark, .app-container.theme-light, .app-container.theme-rain, .app-container.theme-tokyonight {\n${declarations}\n}\nbody .file-manager, body .sidebar, body .fm-header { background-color: var(--bg-panel) !important; }\n`;
   };
 
-  const applyPresetToDom = (preset: OmarchyPreset) => {
+  const applyPresetToDom = (preset: OmarchyPreset, modeLabel: ThemeSourceMode) => {
     if (disposed || sdk.signal.aborted) return;
-    currentPreset = preset;
+    const signature = `${modeLabel}:${preset.id}:${preset.name}:${preset.mode}:${JSON.stringify(preset.tokens)}`;
+    appliedPreset = preset;
 
-    if (typeof document !== 'undefined' && document.head) {
-      if (!styleTag) {
-        styleTag = document.createElement('style');
-        styleTag.setAttribute('data-omarchy-theme-dynamic', 'true');
-        document.head.append(styleTag);
-      }
-      styleTag.textContent = renderDynamicCss(preset.tokens);
-    }
+    if (signature !== lastAppliedSignature) {
+      lastAppliedSignature = signature;
 
-    for (const el of targets()) {
-      let saved = previousInlineValues.get(el);
-      if (!saved) {
-        saved = new Map<string, string>();
-        for (const key of Object.keys(preset.tokens)) {
-          saved.set(key, el.style.getPropertyValue(key));
+      if (typeof document !== 'undefined' && document.head) {
+        if (!styleTag) {
+          styleTag = document.createElement('style');
+          styleTag.setAttribute('data-omarchy-theme-dynamic', 'true');
+          document.head.append(styleTag);
         }
-        previousInlineValues.set(el, saved);
+        styleTag.textContent = renderDynamicCss(preset.tokens);
       }
-      for (const [key, value] of Object.entries(preset.tokens)) {
-        el.style.setProperty(key, value);
-      }
-    }
 
-    sdk.setStatus(`Omarchy: ${preset.name} (${preset.mode})`);
+      for (const el of targets()) {
+        let saved = previousInlineValues.get(el);
+        if (!saved) {
+          saved = new Map<string, string>();
+          for (const key of Object.keys(preset.tokens)) {
+            saved.set(key, el.style.getPropertyValue(key));
+          }
+          previousInlineValues.set(el, saved);
+        }
+        for (const [key, value] of Object.entries(preset.tokens)) {
+          el.style.setProperty(key, value);
+        }
+      }
+
+      const badge = modeLabel === 'follow-omarchy' ? 'Following Omarchy' : 'Manual';
+      sdk.setStatus(`Omarchy: ${preset.name} (${preset.mode} · ${badge})`);
+    }
     notify();
   };
 
@@ -116,74 +140,146 @@ definePlugin((sdk) => {
     subscribers.clear();
   };
 
-  const resolveFromSettings = (raw: unknown): OmarchyPreset => {
+  const parseSettingsState = (raw: unknown): {
+    mode: ThemeSourceMode;
+    manualId: string;
+    livePreset: OmarchyPreset;
+    targetPreset: OmarchyPreset;
+  } => {
+    let mode: ThemeSourceMode = 'follow-omarchy';
+    let manualId: string = manualPresetId;
+    let livePreset: OmarchyPreset = fallbackPreset;
+
     if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
       const data = raw as StoredThemeSettings;
-      if (isSafeTokenMap(data.customTokens)) {
-        return {
-          id: data.presetId ?? 'custom',
-          name:
-            typeof data.customName === 'string' && data.customName.trim()
-              ? data.customName.trim()
-              : 'Omarchy Active',
-          mode: data.customMode === 'light' ? 'light' : 'dark',
-          accent: data.customTokens['--accent'] ?? '#7fbbb3',
-          background: data.customTokens['--bg-dark'] ?? '#2d353b',
-          foreground: data.customTokens['--text-main'] ?? '#d3c6aa',
-          tokens: data.customTokens,
-        };
+
+      if (data.sourceMode === 'manual' || data.sourceMode === 'follow-omarchy') {
+        mode = data.sourceMode;
       }
-      if (typeof data.presetId === 'string' && OMARCHY_PRESETS[data.presetId]) {
-        return OMARCHY_PRESETS[data.presetId];
+
+      if (typeof data.manualPresetId === 'string' && OMARCHY_PRESETS[data.manualPresetId]) {
+        manualId = data.manualPresetId;
+      } else if (typeof data.presetId === 'string' && OMARCHY_PRESETS[data.presetId]) {
+        manualId = data.presetId;
+      }
+
+      const tokensCandidate = data.omarchyTokens ?? data.customTokens;
+      const slugCandidate = data.omarchyPresetId ?? data.presetId;
+      const nameCandidate = data.omarchyName ?? data.customName;
+      const modeCandidate = data.omarchyMode ?? data.customMode;
+
+      if (isSafeTokenMap(tokensCandidate)) {
+        livePreset = {
+          id: typeof slugCandidate === 'string' && slugCandidate ? slugCandidate : 'omarchy-active',
+          name:
+            typeof nameCandidate === 'string' && nameCandidate.trim()
+              ? nameCandidate.trim()
+              : 'Omarchy Active',
+          mode: modeCandidate === 'light' ? 'light' : 'dark',
+          accent: tokensCandidate['--accent'] ?? fallbackPreset.accent,
+          background: tokensCandidate['--bg-dark'] ?? fallbackPreset.background,
+          foreground: tokensCandidate['--text-main'] ?? fallbackPreset.foreground,
+          tokens: tokensCandidate,
+        };
+      } else if (typeof slugCandidate === 'string' && OMARCHY_PRESETS[slugCandidate]) {
+        livePreset = OMARCHY_PRESETS[slugCandidate];
       }
     }
-    return (
-      OMARCHY_PRESETS[DEFAULT_OMARCHY_PRESET_KEY] ??
-      Object.values(OMARCHY_PRESETS)[0]
-    );
+
+    const targetPreset =
+      mode === 'manual'
+        ? (OMARCHY_PRESETS[manualId] ?? livePreset)
+        : livePreset;
+
+    return { mode, manualId, livePreset, targetPreset };
   };
 
   const reloadFromSettings = async () => {
-    if (disposed || sdk.signal.aborted) return;
+    if (disposed || sdk.signal.aborted || pollInFlight) return;
+    pollInFlight = true;
     try {
       const loaded = await sdk.app.loadSettings();
       if (disposed || sdk.signal.aborted) return;
       loadedBaseline = loaded;
+      const resolved = parseSettingsState(loaded);
+      sourceMode = resolved.mode;
+      manualPresetId = resolved.manualId;
+      omarchyLivePreset = resolved.livePreset;
       lastError = null;
-      applyPresetToDom(resolveFromSettings(loaded));
+      applyPresetToDom(resolved.targetPreset, resolved.mode);
     } catch (error) {
       if (disposed || sdk.signal.aborted) return;
       lastError =
         error instanceof Error ? error.message : 'Failed to load theme settings';
       notify();
+    } finally {
+      pollInFlight = false;
     }
   };
 
-  const selectAndSavePreset = async (presetId: string) => {
-    const target = OMARCHY_PRESETS[presetId];
-    if (!target || disposed || sdk.signal.aborted) return;
-    applyPresetToDom(target);
-    const nextValue: StoredThemeSettings = { presetId: target.id };
+  const persistPreference = async (
+    nextMode: ThemeSourceMode,
+    nextManualPresetId: string,
+  ) => {
+    if (disposed || sdk.signal.aborted) return;
+    sourceMode = nextMode;
+    manualPresetId = nextManualPresetId;
+
+    const immediateTarget =
+      nextMode === 'manual'
+        ? (OMARCHY_PRESETS[nextManualPresetId] ?? omarchyLivePreset)
+        : omarchyLivePreset;
+    applyPresetToDom(immediateTarget, nextMode);
+
     try {
-      await sdk.app.saveSettings(nextValue, loadedBaseline);
+      // Refresh baseline immediately before compare-and-save so external hook updates are preserved.
+      const freshest = await sdk.app.loadSettings();
       if (disposed || sdk.signal.aborted) return;
-      loadedBaseline = nextValue;
+      loadedBaseline = freshest;
+      const resolved = parseSettingsState(freshest);
+      omarchyLivePreset = resolved.livePreset;
+
+      const baseObj =
+        freshest && typeof freshest === 'object' && !Array.isArray(freshest)
+          ? (freshest as StoredThemeSettings)
+          : {};
+
+      const nextSettings: StoredThemeSettings = {
+        ...baseObj,
+        sourceMode: nextMode,
+        manualPresetId: nextManualPresetId,
+      };
+
+      await sdk.app.saveSettings(nextSettings, freshest);
+      if (disposed || sdk.signal.aborted) return;
+      loadedBaseline = nextSettings;
       lastError = null;
-      notify();
+
+      const finalTarget =
+        nextMode === 'manual'
+          ? (OMARCHY_PRESETS[nextManualPresetId] ?? omarchyLivePreset)
+          : omarchyLivePreset;
+      applyPresetToDom(finalTarget, nextMode);
     } catch (error) {
       if (disposed || sdk.signal.aborted) return;
       lastError =
         error instanceof Error
-          ? `${error.message} — click "Reload from Omarchy / Disk" to sync.`
+          ? `${error.message} — click "Sync Now" to retry.`
           : 'Settings save conflict';
       notify();
     }
   };
 
-  applyPresetToDom(currentPreset);
+  applyPresetToDom(appliedPreset, sourceMode);
   void reloadFromSettings();
 
+  const pollTimer = setInterval(() => {
+    if (disposed || sdk.signal.aborted) return;
+    void reloadFromSettings();
+  }, POLL_INTERVAL_MS);
+
   const onWindowFocus = () => {
+    if (disposed || sdk.signal.aborted) return;
     void reloadFromSettings();
   };
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
@@ -191,10 +287,17 @@ definePlugin((sdk) => {
   }
 
   sdk.onDispose(() => {
+    clearInterval(pollTimer);
     if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
       window.removeEventListener('focus', onWindowFocus);
     }
     restoreDom();
+  });
+
+  sdk.registerCommand({
+    id: 'follow-omarchy',
+    name: 'Follow Omarchy active theme',
+    run: () => persistPreference('follow-omarchy', manualPresetId),
   });
 
   sdk.registerCommand({
@@ -217,6 +320,7 @@ definePlugin((sdk) => {
       }, []);
 
       const presetList = Object.values(OMARCHY_PRESETS);
+      const isFollowing = sourceMode === 'follow-omarchy';
 
       return React.createElement(
         'div',
@@ -233,9 +337,48 @@ definePlugin((sdk) => {
             },
           },
           React.createElement(
-            'span',
-            null,
-            `Active palette: ${currentPreset.name} (${currentPreset.mode})`,
+            'div',
+            { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                'aria-pressed': isFollowing,
+                onClick: () => void persistPreference('follow-omarchy', manualPresetId),
+                style: {
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: isFollowing
+                    ? '2px solid var(--accent-primary)'
+                    : '1px solid var(--border-elevated)',
+                  background: isFollowing ? 'var(--surface-active)' : 'var(--bg-elevated)',
+                  color: 'var(--text-elevated)',
+                  fontWeight: isFollowing ? 600 : 400,
+                  cursor: 'pointer',
+                },
+              },
+              `Follow Omarchy Active Theme (${omarchyLivePreset.name})`,
+            ),
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                'aria-pressed': !isFollowing,
+                onClick: () => void persistPreference('manual', manualPresetId),
+                style: {
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: !isFollowing
+                    ? '2px solid var(--accent-primary)'
+                    : '1px solid var(--border-elevated)',
+                  background: !isFollowing ? 'var(--surface-active)' : 'var(--bg-elevated)',
+                  color: 'var(--text-elevated)',
+                  fontWeight: !isFollowing ? 600 : 400,
+                  cursor: 'pointer',
+                },
+              },
+              'Choose Theme Yourself',
+            ),
           ),
           React.createElement(
             'button',
@@ -251,8 +394,15 @@ definePlugin((sdk) => {
                 cursor: 'pointer',
               },
             },
-            'Reload from Omarchy / Disk',
+            'Sync Now',
           ),
+        ),
+        React.createElement(
+          'p',
+          { style: { margin: 0, color: 'var(--text-faint)', fontSize: '0.9em' } },
+          isFollowing
+            ? `Currently following Omarchy system theme: ${omarchyLivePreset.name} (${omarchyLivePreset.mode}). Switching themes in Omarchy updates Ovata automatically. Click any theme below to switch to manual selection.`
+            : `Currently pinned to manual choice: ${appliedPreset.name} (${appliedPreset.mode}). Click "Follow Omarchy Active Theme" above to resume automatic syncing.`,
         ),
         lastError
           ? React.createElement(
@@ -271,30 +421,36 @@ definePlugin((sdk) => {
             },
           },
           ...presetList.map((preset) => {
-            const active = currentPreset.id === preset.id;
+            const active = !isFollowing && manualPresetId === preset.id;
+            const isSystemActive = isFollowing && omarchyLivePreset.id === preset.id;
             return React.createElement(
               'button',
               {
                 key: preset.id,
                 type: 'button',
-                'aria-pressed': active,
-                onClick: () => void selectAndSavePreset(preset.id),
+                'aria-pressed': active || isSystemActive,
+                onClick: () => void persistPreference('manual', preset.id),
                 style: {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   padding: '8px 10px',
                   borderRadius: '8px',
-                  border: active
-                    ? `2px solid ${preset.accent}`
-                    : '1px solid var(--border-elevated)',
+                  border:
+                    active || isSystemActive
+                      ? `2px solid ${preset.accent}`
+                      : '1px solid var(--border-elevated)',
                   background: preset.background,
                   color: preset.foreground,
                   cursor: 'pointer',
                   textAlign: 'left',
                 },
               },
-              React.createElement('span', null, preset.name),
+              React.createElement(
+                'span',
+                null,
+                preset.name + (isSystemActive ? ' (Omarchy)' : ''),
+              ),
               React.createElement('span', {
                 style: {
                   width: '14px',

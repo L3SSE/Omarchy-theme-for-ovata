@@ -9,7 +9,7 @@ export interface OmarchyPreset {
   readonly tokens: Readonly<Record<string, string>>;
 }
 
-export const DEFAULT_OMARCHY_PRESET_KEY = "ethereal" as const;
+export const DEFAULT_OMARCHY_PRESET_KEY = "gruvbox" as const;
 export const OMARCHY_PRESETS: Readonly<Record<string, OmarchyPreset>> = Object.freeze({
   "catppuccin": {
     "id": "catppuccin",

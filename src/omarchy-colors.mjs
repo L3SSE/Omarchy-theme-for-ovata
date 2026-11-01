@@ -257,7 +257,7 @@ export function buildOmarchyThemeManifest(colors, options = {}) {
   const p = resolveOmarchyPalette(colors);
   const id = options.id ?? 'omarchy-theme';
   const name = options.name ?? 'Omarchy Theme';
-  const version = options.version ?? '1.1.0';
+  const version = options.version ?? '1.2.0';
   const author = options.author ?? 'L3SSE';
   const platforms = options.platforms ?? ['linux'];
   const activePreset = (options.themeName ?? 'Active').trim() || 'Active';
@@ -268,7 +268,7 @@ export function buildOmarchyThemeManifest(colors, options = {}) {
     id,
     name,
     version,
-    description: `Applies Omarchy Linux desktop palettes (default: ${activePreset} ${p.mode}) across Ovata when enabled, with all 22 Omarchy presets and live settings reload.`,
+    description: `Automatically follows the active Omarchy Linux desktop palette (default: ${activePreset} ${p.mode}) or lets you choose any of the 22 Omarchy presets manually.`,
     author,
     platforms,
     kind: 'extension',
