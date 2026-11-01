@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": 1,
+  "id": "omarchy-theme",
+  "name": "Omarchy Theme",
+  "version": "1.0.0",
+  "description": "Applies the active Omarchy Linux desktop palette (Everforest dark) to Ovata chrome and canvas nodes.",
+  "author": "L3SSE",
+  "platforms": [
+    "linux"
+  ],
+  "kind": "theme",
+  "theme": {
+    "mode": "dark",
+    "tokens": {
+      "--node-bg": "#2d353b",
+      "--node-glow": "#7fbbb344",
+      "--bg-base": "#21272c",
+      "--bg-elevated": "#343f44",
+      "--text-elevated": "#d3c6aa",
+      "--text-bright": "#d3c6aa",
+      "--text-faint": "#9da9a0",
+      "--accent-primary": "#7fbbb3",
+      "--on-accent": "#181d20",
+      "--border-elevated": "#475258",
+      "--danger": "#e67e80"
+    }
+  }
+}
