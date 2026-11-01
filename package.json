@@ -1,7 +1,7 @@
 {
   "name": "omarchy-theme",
-  "version": "1.0.0",
-  "description": "Ovata theme plugin generated from the active Omarchy Linux desktop palette.",
+  "version": "1.1.0",
+  "description": "Ovata theme extension generated from the active Omarchy Linux desktop palette.",
   "license": "MIT",
   "author": "L3SSE",
   "type": "module",

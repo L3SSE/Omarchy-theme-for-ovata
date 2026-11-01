@@ -79,19 +79,11 @@ export function withGlowAlpha(hex, alphaHex = '44') {
 }
 
 /**
- * Map parsed Omarchy `colors.toml` entries to Ovata's ThemeManifest structure.
+ * Normalize and validate all palette colors from an Omarchy `colors.toml` object.
  *
  * @param {Record<string, string>} colors
- * @param {{
- *   id?: string;
- *   name?: string;
- *   version?: string;
- *   author?: string;
- *   themeName?: string;
- *   platforms?: ('linux' | 'android')[];
- * }} [options]
  */
-export function buildOmarchyThemeManifest(colors, options = {}) {
+export function resolveOmarchyPalette(colors) {
   if (!colors || typeof colors !== 'object') {
     throw new TypeError('Expected parsed colors object');
   }
@@ -103,6 +95,11 @@ export function buildOmarchyThemeManifest(colors, options = {}) {
 
   const background = assertHexColor(colors.background, 'background');
   const accent = assertHexColor(colors.accent ?? colors.blue, 'accent');
+  const selection = assertHexColor(
+    colors.selection ?? colors.lighter_background ?? colors.background,
+    'selection',
+  );
+  const muted = assertHexColor(colors.muted ?? colors.selection ?? colors.background, 'muted');
   const darkBackground = assertHexColor(
     colors.dark_background ?? colors.background,
     'dark_background',
@@ -124,15 +121,146 @@ export function buildOmarchyThemeManifest(colors, options = {}) {
     colors.light_foreground ?? colors.dark_foreground ?? colors.foreground,
     'light_foreground',
   );
-  const muted = assertHexColor(colors.muted ?? colors.selection ?? colors.background, 'muted');
-  const danger = assertHexColor(colors.red ?? colors.bright_red, 'red');
+  const red = assertHexColor(colors.red ?? colors.bright_red, 'red');
+  const yellow = assertHexColor(colors.yellow ?? colors.bright_yellow ?? accent, 'yellow');
+  const green = assertHexColor(colors.green ?? colors.bright_green ?? accent, 'green');
+  const cyan = assertHexColor(colors.cyan ?? colors.bright_cyan ?? accent, 'cyan');
+  const blue = assertHexColor(colors.blue ?? colors.bright_blue ?? accent, 'blue');
+  const magenta = assertHexColor(colors.magenta ?? colors.bright_magenta ?? accent, 'magenta');
 
+  return {
+    mode,
+    background,
+    accent,
+    selection,
+    muted,
+    darkBackground,
+    darkerBackground,
+    lighterBackground,
+    foreground,
+    brightForeground,
+    lightForeground,
+    red,
+    yellow,
+    green,
+    cyan,
+    blue,
+    magenta,
+    nodeGlow: withGlowAlpha(accent, '44'),
+    surfaceSunken: withGlowAlpha(darkerBackground, 'a6'),
+    surfaceFloating: withGlowAlpha(background, 'eb'),
+  };
+}
+
+/**
+ * Convert a resolved Omarchy palette into the complete map of Ovata CSS custom properties.
+ *
+ * @param {ReturnType<typeof resolveOmarchyPalette>} p
+ * @returns {Record<string, string>}
+ */
+export function buildOvataTokenMap(p) {
+  return {
+    '--bg-dark': p.background,
+    '--bg-panel': p.darkBackground,
+    '--text-main': p.foreground,
+    '--text-muted': p.lightForeground,
+    '--accent': p.accent,
+    '--selection': p.selection,
+    '--border': p.muted,
+    '--bg-image': 'none',
+    '--bg-opacity': '1',
+    '--bg-base': p.darkBackground,
+    '--bg-elevated': p.lighterBackground,
+    '--border-elevated': p.muted,
+    '--border-toolbar': p.muted,
+    '--border-subtle': p.lighterBackground,
+    '--surface-active': p.selection,
+    '--surface-sunken': p.surfaceSunken,
+    '--surface-floating': p.surfaceFloating,
+    '--accent-primary': p.accent,
+    '--on-accent': p.darkerBackground,
+    '--accent-success': p.green,
+    '--text-elevated': p.foreground,
+    '--text-bright': p.brightForeground,
+    '--text-faint': p.lightForeground,
+    '--danger': p.red,
+    '--file-folder': p.yellow,
+    '--file-markdown': p.blue,
+    '--file-note': p.green,
+    '--file-mindmap': p.magenta,
+    '--file-pdfnote': p.red,
+    '--node-bg': p.lighterBackground,
+    '--node-glow': p.nodeGlow,
+    '--md-heading': p.brightForeground,
+    '--md-bold': p.blue,
+    '--md-italic': p.magenta,
+    '--md-link': p.cyan,
+    '--md-url': p.green,
+    '--md-code-bg': p.darkBackground,
+  };
+}
+
+/**
+ * Generate the full Ovata stylesheet (`styles.css`) that overrides both
+ * base layout tokens (`--bg-dark`, `--bg-panel`, `--bg-image`, `--text-main`, etc.)
+ * and all semantic/canvas/markdown tokens the moment the plugin is enabled.
+ *
+ * @param {Record<string, string>} colors
+ * @param {{ themeName?: string }} [options]
+ * @returns {string}
+ */
+export function buildOmarchyStylesheet(colors, options = {}) {
+  const p = resolveOmarchyPalette(colors);
+  const tokens = buildOvataTokenMap(p);
+  const activePreset = (options.themeName ?? 'Active').trim() || 'Active';
+  const declarations = Object.entries(tokens)
+    .map(([key, value]) => `  ${key}: ${value} !important;`)
+    .join('\n');
+
+  return `/* Generated from Omarchy active theme: ${activePreset} (${p.mode}) */
+:root,
+body,
+body.theme-dark,
+body.theme-light,
+body.theme-rain,
+body.theme-tokyonight,
+.app-container,
+.app-container.theme-dark,
+.app-container.theme-light,
+.app-container.theme-rain,
+.app-container.theme-tokyonight {
+${declarations}
+}
+
+body .file-manager,
+body .sidebar,
+body .fm-header {
+  background-color: var(--bg-panel) !important;
+}
+`;
+}
+
+/**
+ * Build the Ovata extension manifest (`manifest.json`) for the Omarchy theme plugin.
+ *
+ * @param {Record<string, string>} colors
+ * @param {{
+ *   id?: string;
+ *   name?: string;
+ *   version?: string;
+ *   author?: string;
+ *   themeName?: string;
+ *   platforms?: ('linux' | 'android')[];
+ * }} [options]
+ */
+export function buildOmarchyThemeManifest(colors, options = {}) {
+  const p = resolveOmarchyPalette(colors);
   const id = options.id ?? 'omarchy-theme';
   const name = options.name ?? 'Omarchy Theme';
-  const version = options.version ?? '1.0.0';
+  const version = options.version ?? '1.1.0';
   const author = options.author ?? 'L3SSE';
   const platforms = options.platforms ?? ['linux'];
-  const activePreset = (options.themeName ?? 'Everforest').trim() || 'Active';
+  const activePreset = (options.themeName ?? 'Active').trim() || 'Active';
 
   return {
     schemaVersion: 1,
@@ -140,25 +268,18 @@ export function buildOmarchyThemeManifest(colors, options = {}) {
     id,
     name,
     version,
-    description: `Applies the active Omarchy Linux desktop palette (${activePreset} ${mode}) to Ovata chrome and canvas nodes.`,
+    description: `Applies Omarchy Linux desktop palettes (default: ${activePreset} ${p.mode}) across Ovata when enabled, with all 22 Omarchy presets and live settings reload.`,
     author,
     platforms,
-    kind: 'theme',
-    theme: {
-      mode,
-      tokens: {
-        '--node-bg': background,
-        '--node-glow': withGlowAlpha(accent, '44'),
-        '--bg-base': darkBackground,
-        '--bg-elevated': lighterBackground,
-        '--text-elevated': foreground,
-        '--text-bright': brightForeground,
-        '--text-faint': lightForeground,
-        '--accent-primary': accent,
-        '--on-accent': darkerBackground,
-        '--border-elevated': muted,
-        '--danger': danger,
-      },
-    },
+    kind: 'extension',
+    entry: 'main.js',
+    styles: 'styles.css',
+    capabilities: [
+      'ui:styles',
+      'ui:status',
+      'ui:views',
+      'commands:register',
+      'settings:read-write',
+    ],
   };
 }

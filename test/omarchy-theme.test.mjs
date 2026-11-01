@@ -6,10 +6,14 @@ import {
   parseOmarchyColorsToml,
   assertHexColor,
   withGlowAlpha,
+  resolveOmarchyPalette,
+  buildOvataTokenMap,
+  buildOmarchyStylesheet,
   buildOmarchyThemeManifest,
 } from '../src/omarchy-colors.mjs';
 
 const manifestPath = fileURLToPath(new URL('../manifest.json', import.meta.url));
+const stylesPath = fileURLToPath(new URL('../styles.css', import.meta.url));
 
 const EVERFOREST_SAMPLE = `
 mode = "dark"
@@ -38,48 +42,55 @@ magenta = "#d699b6"
 brown = "#704e3f"
 `;
 
-test('shipped manifest.json conforms to Ovata Plugin API v1 theme contract', () => {
+test('shipped manifest.json and styles.css conform to Ovata Plugin API v1 extension contract', () => {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const css = readFileSync(stylesPath, 'utf8');
 
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(manifest.apiVersion, 1);
   assert.equal(manifest.id, 'omarchy-theme');
   assert.equal(manifest.name, 'Omarchy Theme');
-  assert.equal(manifest.version, '1.0.0');
-  assert.equal(manifest.kind, 'theme');
+  assert.equal(manifest.version, '1.1.0');
+  assert.equal(manifest.kind, 'extension');
+  assert.equal(manifest.entry, 'main.js');
+  assert.equal(manifest.styles, 'styles.css');
   assert.deepEqual(manifest.platforms, ['linux']);
-  assert.equal('capabilities' in manifest, false, 'theme manifest must not declare capabilities');
-  assert.equal('entry' in manifest, false, 'theme manifest must not declare entry');
+  assert.deepEqual(manifest.capabilities, [
+    'ui:styles',
+    'ui:status',
+    'ui:views',
+    'commands:register',
+    'settings:read-write',
+  ]);
 
-  assert.equal(manifest.theme.mode, 'dark');
-  const tokens = manifest.theme.tokens;
-  const expectedTokens = {
-    '--node-bg': '#2d353b',
-    '--node-glow': '#7fbbb344',
-    '--bg-base': '#21272c',
-    '--bg-elevated': '#343f44',
-    '--text-elevated': '#d3c6aa',
-    '--text-bright': '#d3c6aa',
-    '--text-faint': '#9da9a0',
-    '--accent-primary': '#7fbbb3',
-    '--on-accent': '#181d20',
-    '--border-elevated': '#475258',
-    '--danger': '#e67e80',
-  };
-  assert.deepEqual(tokens, expectedTokens);
-
-  for (const [key, value] of Object.entries(tokens)) {
-    assert.match(value, /^#(?:[a-fA-F0-9]{6}|[a-fA-F0-9]{8})$/, `Invalid token ${key}`);
+  for (const requiredVar of [
+    '--bg-dark:',
+    '--bg-panel:',
+    '--bg-image: none',
+    '--text-main:',
+    '--accent:',
+    '--node-bg:',
+    '--node-glow:',
+    '--accent-primary:',
+  ]) {
+    assert.match(css, new RegExp(requiredVar), `styles.css missing ${requiredVar}`);
   }
 });
 
-test('parseOmarchyColorsToml and buildOmarchyThemeManifest reproduce Everforest manifest deterministically', () => {
+test('resolveOmarchyPalette and buildOvataTokenMap map Everforest tokens deterministically', () => {
   const parsed = parseOmarchyColorsToml(EVERFOREST_SAMPLE);
-  const generated = buildOmarchyThemeManifest(parsed, {
-    themeName: 'Everforest',
-  });
-  const shipped = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  assert.deepEqual(generated, shipped);
+  const palette = resolveOmarchyPalette(parsed);
+  const tokens = buildOvataTokenMap(palette);
+
+  assert.equal(tokens['--bg-dark'], '#2d353b');
+  assert.equal(tokens['--bg-panel'], '#21272c');
+  assert.equal(tokens['--bg-image'], 'none');
+  assert.equal(tokens['--node-bg'], '#343f44');
+  assert.equal(tokens['--node-glow'], '#7fbbb344');
+  assert.equal(tokens['--accent-primary'], '#7fbbb3');
+
+  const css = buildOmarchyStylesheet(parsed, { themeName: 'Everforest' });
+  assert.match(css, /--bg-dark: #2d353b !important;/);
 });
 
 test('handles Unicode comments, CRLF line endings, and Unicode preset names', () => {
@@ -103,9 +114,6 @@ test('handles Unicode comments, CRLF line endings, and Unicode preset names', ()
     themeName: 'Everforest Светлая 森',
   });
 
-  assert.equal(manifest.theme.mode, 'light');
-  assert.equal(manifest.theme.tokens['--node-bg'], '#fdf6e3');
-  assert.equal(manifest.theme.tokens['--node-glow'], '#3a94c544');
   assert.match(manifest.description, /Everforest Светлая 森 light/);
 });
 
@@ -121,7 +129,7 @@ test('rejects empty, whitespace-only, and comment-only inputs', () => {
 });
 
 test('handles large valid inputs within 64 KiB and rejects inputs over 64 KiB', () => {
-  const paddingComment = `# ${'x'.repeat(120)}\n`.repeat(350); // ~43 KiB
+  const paddingComment = `# ${'x'.repeat(120)}\n`.repeat(350);
   const validLarge = `${paddingComment}\n${EVERFOREST_SAMPLE}`;
   const parsed = parseOmarchyColorsToml(validLarge);
   assert.equal(parsed.accent, '#7fbbb3');

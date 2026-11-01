@@ -1,0 +1,56 @@
+/* Generated from Omarchy active theme: Ethereal (dark) */
+:root,
+body,
+body.theme-dark,
+body.theme-light,
+body.theme-rain,
+body.theme-tokyonight,
+.app-container,
+.app-container.theme-dark,
+.app-container.theme-light,
+.app-container.theme-rain,
+.app-container.theme-tokyonight {
+  --bg-dark: #060b1e !important;
+  --bg-panel: #040816 !important;
+  --text-main: #ffcead !important;
+  --text-muted: #c9b8a6 !important;
+  --accent: #7d82d9 !important;
+  --selection: #252e56 !important;
+  --border: #6d7db6 !important;
+  --bg-image: none !important;
+  --bg-opacity: 1 !important;
+  --bg-base: #040816 !important;
+  --bg-elevated: #131a3a !important;
+  --border-elevated: #6d7db6 !important;
+  --border-toolbar: #6d7db6 !important;
+  --border-subtle: #131a3a !important;
+  --surface-active: #252e56 !important;
+  --surface-sunken: #030610a6 !important;
+  --surface-floating: #060b1eeb !important;
+  --accent-primary: #7d82d9 !important;
+  --on-accent: #030610 !important;
+  --accent-success: #92a593 !important;
+  --text-elevated: #ffcead !important;
+  --text-bright: #ffcead !important;
+  --text-faint: #c9b8a6 !important;
+  --danger: #ed5b5a !important;
+  --file-folder: #e9bb4f !important;
+  --file-markdown: #7d82d9 !important;
+  --file-note: #92a593 !important;
+  --file-mindmap: #c89dc1 !important;
+  --file-pdfnote: #ed5b5a !important;
+  --node-bg: #131a3a !important;
+  --node-glow: #7d82d944 !important;
+  --md-heading: #ffcead !important;
+  --md-bold: #7d82d9 !important;
+  --md-italic: #c89dc1 !important;
+  --md-link: #a3bfd1 !important;
+  --md-url: #92a593 !important;
+  --md-code-bg: #040816 !important;
+}
+
+body .file-manager,
+body .sidebar,
+body .fm-header {
+  background-color: var(--bg-panel) !important;
+}

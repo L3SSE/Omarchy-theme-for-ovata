@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "types": [],
+    "strict": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "paths": {
+      "@ovata/plugin-api/runtime": [
+        "../Ovata/packages/plugin-api/src/runtime.ts"
+      ]
+    }
+  },
+  "include": ["plugin.ts", "src/active-palette.ts"]
+}
