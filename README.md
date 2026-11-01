@@ -1,17 +1,18 @@
 # Omarchy Theme (`omarchy-theme`)
 
-An [Ovata](https://github.com/L3SSE/Ovata) `kind: "extension"` theme plugin that styles the entire Ovata workspace and canvas using your **Omarchy** Linux desktop palette immediately upon activation, bundles all 22 official Omarchy presets, and supports live settings reload when you switch themes.
+An [Ovata](https://github.com/L3SSE/Ovata) `kind: "extension"` theme plugin that styles the entire Ovata workspace and canvas using your **Omarchy** Linux desktop palette immediately upon activation, automatically switches Ovata's colors whenever you change your Omarchy theme (`sourceMode: "follow-omarchy"`), and lets you manually pin any of the 22 official Omarchy presets (`sourceMode: "manual"`).
 
 ---
 
-## Why `kind: "extension"` Instead of `kind: "theme"`?
+## How Automatic Omarchy Sync + Manual Choice Works (`v1.2.0`)
 
-In Ovata `0.3.0-alpha.1` (`09e44235bd6634d02d9cf71a0a79b48043e8683c`), `kind: "theme"` manifests are limited to an 11-token schema (`ThemeTokensSchema`) and cannot override Ovata's base window/sidebar/background CSS variables (`--bg-dark`, `--bg-panel`, `--bg-image`, `--text-main`, `--text-muted`, `--accent`, `--selection`, `--border`), leaving the main window background purple (`Obsidian`) and requiring a manual visit to **Settings → Themes**.
-
-By using `kind: "extension"` with `styles: "styles.css"` and `plugin.ts`:
-1. **Immediate full-app theming on Enable:** Clicking **Enable** in **Settings → Plugins** immediately overrides all base, semantic, markdown, file-type, and canvas node tokens across the entire app without visiting **Settings → Themes**.
-2. **All 22 Omarchy themes bundled:** Open **Omarchy Theme Picker** inside **Settings → Plugins** to switch between any of the 22 Omarchy palettes (`Catppuccin`, `Catppuccin Latte`, `Ethereal`, `Everforest`, `Flexoki Light`, `Gruvbox`, `Hackerman`, `Kanagawa`, `Last Horizon`, `Lumon`, `Lupine`, `Matte Black`, `Miasma`, `Nord`, `Osaka Jade`, `Retro 82`, `Ristretto`, `Rose Pine`, `Solitude`, `Tokyo Night`, `Vantablack`, `White`).
-3. **Live Omarchy sync without changing the plugin digest:** Run `node scripts/sync-vault-settings.mjs <path-to-vault>` (or trigger it from an Omarchy `theme-set.d` hook) to write your active `~/.local/state/omarchy/current/theme/colors.toml` into `<vault>/.Ovata/plugin-data/omarchy-theme/settings.json`. When you focus the Ovata window (or click **Reload from Omarchy / Disk**), the plugin reloads settings and updates the theme live without rebuilding or re-approving the package.
+1. **Follow Omarchy Active Theme (`sourceMode: "follow-omarchy"` — default):**
+   - An Omarchy `theme-set.d` hook (`~/.config/omarchy/hooks/theme-set.d/omarchy-ovata-theme.sh`, installed via `npm run install-hook`) runs automatically whenever you change your desktop theme (`Super + Alt + Space → Theme` or `omarchy-theme-set`).
+   - The hook writes the new `omarchyPresetId`, `omarchyName`, `omarchyMode`, and `omarchyTokens` into `<vault>/.Ovata/plugin-data/omarchy-theme/settings.json` while **preserving** your `sourceMode` and `manualPresetId`.
+   - Inside Ovata, `omarchy-theme` polls `sdk.app.loadSettings()` every `1.5s` (and on window `focus`) and transitions all 31 Ovata CSS tokens to your new Omarchy theme live—without changing the plugin's SHA-256 `packageDigest` or requiring re-approval.
+2. **Choose Theme Yourself (`sourceMode: "manual"`):**
+   - Open **Omarchy Theme Picker** inside **Settings → Plugins** and click **Choose Theme Yourself** (or click any of the 22 bundled Omarchy theme cards: `Catppuccin`, `Catppuccin Latte`, `Ethereal`, `Everforest`, `Flexoki Light`, `Gruvbox`, `Hackerman`, `Kanagawa`, `Last Horizon`, `Lumon`, `Lupine`, `Matte Black`, `Miasma`, `Nord`, `Osaka Jade`, `Retro 82`, `Ristretto`, `Rose Pine`, `Solitude`, `Tokyo Night`, `Vantablack`, `White`).
+   - Your manual choice is persisted via compare-and-save (`sdk.app.saveSettings`) and stays locked even when you switch your desktop Omarchy theme, until you click **Follow Omarchy Active Theme** again.
 
 ---
 
@@ -20,34 +21,24 @@ By using `kind: "extension"` with `styles: "styles.css"` and `plugin.ts`:
 | Capability | Purpose |
 | :--- | :--- |
 | `ui:styles` | Loads `styles.css` so base and semantic theme tokens apply immediately on activation |
-| `ui:status` | Displays `Omarchy: <Theme Name> (<mode>)` in the plugin status line |
+| `ui:status` | Displays `Omarchy: <Theme Name> (<mode> · Following Omarchy / Manual)` in the plugin status line |
 | `ui:views` | Registers the **Omarchy Theme Picker** view in **Settings → Plugins** |
-| `commands:register` | Registers the **Reload Omarchy theme** command |
-| `settings:read-write` | Persists the selected preset and reads synced Omarchy colors from `.Ovata/plugin-data/omarchy-theme/settings.json` using compare-and-save |
+| `commands:register` | Registers **Follow Omarchy active theme** and **Reload Omarchy theme** commands |
+| `settings:read-write` | Reads live Omarchy palette updates and persists `sourceMode` / `manualPresetId` via compare-and-save |
 
 ---
 
-## Supported Ovata Build & Package Identity (`1.1.0`)
+## Supported Ovata Build & Package Identity (`1.2.0`)
 
 | Property | Value |
 | :--- | :--- |
 | **Plugin ID** | `omarchy-theme` |
-| **Plugin Version** | `1.1.0` |
+| **Plugin Version** | `1.2.0` |
 | **Target Ovata Version** | `0.3.0-alpha.1` (Plugin API `v1`, Schema `v1`) |
 | **Target Ovata Source Revision** | `09e44235bd6634d02d9cf71a0a79b48043e8683c` (`workingTree: "clean"`) |
 | **Contract Fingerprint** | `sha256:c6deb1abb8a74c0a9d09ca37fc593b96cfb2eba6fbc0317faed64150ee7315d0` |
-| **Package Digest (`packageDigest`)** | `sha256:ab8624177d12b829d5eec46959f0c8a8caf3e3852f38010e60e7f17c11f48040` |
-| **`.ovplugin` Bundle SHA-256** | `871ebb060bba13dbaf1ebf36ef65cfc21f93260fb01482b8cdd879938441b96d` |
-
----
-
-## Why Plugins Start Stopped After Closing Ovata
-
-In Ovata `0.3.0-alpha.1`, the native host (`core/src/plugin_manager.rs` / `PluginsPane.tsx`) enforces a strict security boundary:
-> *"ALL plugins start stopped after every process restart and need explicit Enable."*
-
-- **Trust approval is remembered** (`Approved on this device` is stored in `~/.local/share/com.ovata.dev`), so you only approve the package digest once.
-- **Active execution is session-only:** When you restart Ovata, click **Enable** once in **Settings → Plugins** (no confirmation dialog is shown on subsequent restarts) and your saved Omarchy theme immediately applies.
+| **Package Digest (`packageDigest`)** | `sha256:d20e51bfd8f359d0c002d357283db318e76d2963342839b4919c0d4702f5c2dd` |
+| **`.ovplugin` Bundle SHA-256** | `ae50319a20588a65c19b1979e129f12ddef5791823b9614d26a1f9b485665011` |
 
 ---
 
