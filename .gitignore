@@ -1,0 +1,7 @@
+node_modules/
+dist/
+build/
+*.ovplugin
+*.zip
+.DS_Store
+.Ovata/
