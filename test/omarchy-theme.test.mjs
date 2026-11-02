@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -78,6 +78,7 @@ test('shipped manifest.json and styles.css conform to Ovata Plugin API v1 extens
   ]) {
     assert.match(css, new RegExp(requiredVar), `styles.css missing ${requiredVar}`);
   }
+  assert.match(css, /\.plugin-status:empty/, 'styles.css missing .plugin-status:empty');
 });
 
 test('resolveOmarchyPalette and buildOvataTokenMap map Everforest tokens deterministically', () => {
@@ -273,12 +274,12 @@ test('compiled main.js bundle exercises activation, follow-omarchy live sync, ma
     },
   };
 
+  const disposers = [];
   try {
     new Function(code)();
     assert.equal(typeof registeredFactory, 'function');
 
     const abort = new AbortController();
-    const disposers = [];
     const commands = new Map();
     const views = new Map();
     let statusText = '';
@@ -321,8 +322,8 @@ test('compiled main.js bundle exercises activation, follow-omarchy live sync, ma
     await registeredFactory(sdk);
     await new Promise((r) => setTimeout(r, 20));
 
-    // 1. Initial activation applies default Omarchy theme and registers commands/views
-    assert.match(statusText, /Following Omarchy\)$/);
+    // 1. Initial activation applies default Omarchy theme silently and registers commands/views
+    assert.equal(statusText, '');
     assert.equal(commands.has('follow-omarchy'), true);
     assert.equal(commands.has('reload'), true);
     assert.equal(views.has('picker'), true);
@@ -364,14 +365,211 @@ test('compiled main.js bundle exercises activation, follow-omarchy live sync, ma
     assert.equal(storedSettings.sourceMode, 'follow-omarchy');
     assert.equal(statusText, 'Omarchy: Everforest (dark · Following Omarchy)');
 
-    // 5. Dispose restores prior inline properties and removes dynamic style tag
+    // 5. Dispose restores prior inline properties, clears status, and removes dynamic style tag
     abort.abort();
     for (const dispose of disposers) dispose();
+    assert.equal(statusText, '');
     assert.equal(headChildren[0].removed, true);
     assert.equal(bodyEl.style.getPropertyValue('--bg-dark'), '#15131d');
     assert.equal(appContainer.style.getPropertyValue('--accent-primary'), '');
     assert.equal(windowListeners.size, 0);
   } finally {
+    for (const dispose of disposers) {
+      try {
+        dispose();
+      } catch {}
+    }
+    globalThis.HTMLElement = prevHTMLElement;
+    globalThis.document = prevDocument;
+    globalThis.window = prevWindow;
+    globalThis.OvataPlugins = prevOvataPlugins;
+  }
+});
+
+test('compiled main.js bundle transient status message disappears after 10 seconds and reappears when theme change is discovered', async () => {
+  const mainJsPath = fileURLToPath(
+    new URL('../dist/omarchy-theme-for-ovata-1.2.0/main.js', import.meta.url),
+  );
+  const code = readFileSync(mainJsPath, 'utf8');
+
+  class FakeHTMLElement {
+    constructor(tag = 'div') {
+      this.tagName = tag.toUpperCase();
+      this._props = new Map();
+      this.attributes = new Map();
+      this.textContent = '';
+      this.removed = false;
+      this.style = {
+        getPropertyValue: (k) => this._props.get(k) ?? '',
+        setProperty: (k, v) => this._props.set(k, String(v)),
+        removeProperty: (k) => this._props.delete(k),
+      };
+    }
+    setAttribute(k, v) {
+      this.attributes.set(k, String(v));
+    }
+    remove() {
+      this.removed = true;
+    }
+  }
+
+  const prevHTMLElement = globalThis.HTMLElement;
+  const prevDocument = globalThis.document;
+  const prevWindow = globalThis.window;
+  const prevOvataPlugins = globalThis.OvataPlugins;
+
+  const docEl = new FakeHTMLElement('html');
+  const bodyEl = new FakeHTMLElement('body');
+  const appContainer = new FakeHTMLElement('div');
+  const headChildren = [];
+  const windowListeners = new Map();
+
+  globalThis.HTMLElement = FakeHTMLElement;
+  globalThis.document = {
+    documentElement: docEl,
+    body: bodyEl,
+    head: {
+      append: (el) => headChildren.push(el),
+    },
+    createElement: (tag) => new FakeHTMLElement(tag),
+    querySelector: (sel) => (sel === '.app-container' ? appContainer : null),
+  };
+  globalThis.window = {
+    addEventListener: (type, fn) => windowListeners.set(type, fn),
+    removeEventListener: (type, fn) => {
+      if (windowListeners.get(type) === fn) windowListeners.delete(type);
+    },
+  };
+
+  let registeredFactory = null;
+  globalThis.OvataPlugins = {
+    define: (factory) => {
+      registeredFactory = factory;
+    },
+  };
+
+  const disposers = [];
+  mock.timers.enable({ apis: ['setTimeout'] });
+
+  try {
+    new Function(code)();
+    assert.equal(typeof registeredFactory, 'function');
+
+    const abort = new AbortController();
+    const commands = new Map();
+    const views = new Map();
+    let statusText = '';
+    let storedSettings = {};
+
+    const fakeReact = {
+      useState: (init) => [typeof init === 'function' ? init() : init, () => {}],
+      useEffect: () => {},
+      createElement: (type, props, ...children) => ({ type, props, children }),
+    };
+
+    const sdk = {
+      React: fakeReact,
+      signal: abort.signal,
+      app: {
+        files: () => [],
+        readFile: async () => '',
+        openFile: async () => {},
+        activeDocument: () => null,
+        subscribeDocument: () => () => {},
+        loadSettings: async () => structuredClone(storedSettings),
+        saveSettings: async (value) => {
+          storedSettings = structuredClone(value);
+        },
+      },
+      registerCommand: (cmd) => commands.set(cmd.id, cmd),
+      registerView: (view) => views.set(view.id, view),
+      registerPanel: () => {},
+      setStatus: (text) => {
+        statusText = text;
+      },
+      onDispose: (fn) => disposers.push(fn),
+    };
+
+    await registeredFactory(sdk);
+
+    // 1. On initial activation/startup, status is quiet (no status banner)
+    assert.equal(statusText, '', 'Status must remain quiet on initial startup');
+
+    // 2. Discover theme change from Omarchy live sync (Everforest)
+    const parsedEverforest = parseOmarchyColorsToml(EVERFOREST_SAMPLE);
+    const everforestTokens = buildOvataTokenMap(resolveOmarchyPalette(parsedEverforest));
+    storedSettings = {
+      sourceMode: 'follow-omarchy',
+      manualPresetId: 'gruvbox',
+      omarchyPresetId: 'everforest',
+      omarchyName: 'Everforest',
+      omarchyMode: 'dark',
+      omarchyTokens: everforestTokens,
+    };
+    await commands.get('reload').run();
+    assert.equal(
+      statusText,
+      'Omarchy: Everforest (dark · Following Omarchy)',
+      'Status must appear when theme change is discovered',
+    );
+
+    // 3. Status persists at 9.999 seconds
+    mock.timers.tick(9999);
+    assert.equal(
+      statusText,
+      'Omarchy: Everforest (dark · Following Omarchy)',
+      'Status must remain visible before 10 seconds expire',
+    );
+
+    // 4. Status disappears after exactly 10 seconds (10,000 ms)
+    mock.timers.tick(1);
+    assert.equal(statusText, '', 'Status must disappear after 10 seconds');
+
+    // 5. Subsequent polling without changes keeps status hidden
+    await commands.get('reload').run();
+    assert.equal(statusText, '', 'Status must remain hidden when theme has not changed');
+
+    // 6. Manual theme selection discovers a change and reappears for 10 seconds
+    const renderedTree = views.get('picker').component();
+    const grid = renderedTree.children[3];
+    const tokyoButton = grid.children.find((btn) =>
+      btn.children[0].children[0].startsWith('Tokyo Night'),
+    );
+    await tokyoButton.props.onClick();
+    assert.equal(statusText, 'Omarchy: Tokyo Night (dark · Manual)');
+
+    mock.timers.tick(10000);
+    assert.equal(statusText, '', 'Manual change status must disappear after 10 seconds');
+
+    // 7. Resetting timer if another theme change is discovered within 10 seconds
+    await commands.get('follow-omarchy').run();
+    assert.equal(statusText, 'Omarchy: Everforest (dark · Following Omarchy)');
+    mock.timers.tick(5000);
+    assert.equal(statusText, 'Omarchy: Everforest (dark · Following Omarchy)');
+
+    // Change to Tokyo Night again at 5s mark -> timer resets to full 10s
+    await tokyoButton.props.onClick();
+    assert.equal(statusText, 'Omarchy: Tokyo Night (dark · Manual)');
+    mock.timers.tick(5000);
+    // At total 10s from first change, Tokyo Night is still visible because timer reset
+    assert.equal(statusText, 'Omarchy: Tokyo Night (dark · Manual)');
+    mock.timers.tick(5000);
+    // Now 10s from second change have elapsed -> disappears
+    assert.equal(statusText, '', 'Status must disappear 10 seconds after the latest change');
+
+    // 8. Clean disposal cancels active timer and ensures status is empty
+    await commands.get('follow-omarchy').run();
+    assert.equal(statusText, 'Omarchy: Everforest (dark · Following Omarchy)');
+    abort.abort();
+    for (const dispose of disposers) dispose();
+    assert.equal(statusText, '', 'Dispose must clear status immediately');
+  } finally {
+    for (const dispose of disposers) {
+      try {
+        dispose();
+      } catch {}
+    }
+    mock.timers.reset();
     globalThis.HTMLElement = prevHTMLElement;
     globalThis.document = prevDocument;
     globalThis.window = prevWindow;
