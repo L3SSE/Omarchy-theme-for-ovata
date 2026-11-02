@@ -208,3 +208,173 @@ test('syncVaultThemeSettings writes active Omarchy theme while preserving user s
     rmSync(scratchVault, { recursive: true, force: true });
   }
 });
+
+test('compiled main.js bundle exercises activation, follow-omarchy live sync, manual selection, compare-and-save conflict, and clean disposal', async () => {
+  const mainJsPath = fileURLToPath(
+    new URL('../dist/omarchy-theme-1.2.0/main.js', import.meta.url),
+  );
+  const code = readFileSync(mainJsPath, 'utf8');
+
+  class FakeHTMLElement {
+    constructor(tag = 'div') {
+      this.tagName = tag.toUpperCase();
+      this._props = new Map();
+      this.attributes = new Map();
+      this.textContent = '';
+      this.removed = false;
+      this.style = {
+        getPropertyValue: (k) => this._props.get(k) ?? '',
+        setProperty: (k, v) => this._props.set(k, String(v)),
+        removeProperty: (k) => this._props.delete(k),
+      };
+    }
+    setAttribute(k, v) {
+      this.attributes.set(k, String(v));
+    }
+    remove() {
+      this.removed = true;
+    }
+  }
+
+  const prevHTMLElement = globalThis.HTMLElement;
+  const prevDocument = globalThis.document;
+  const prevWindow = globalThis.window;
+  const prevOvataPlugins = globalThis.OvataPlugins;
+
+  const docEl = new FakeHTMLElement('html');
+  const bodyEl = new FakeHTMLElement('body');
+  const appContainer = new FakeHTMLElement('div');
+  bodyEl.style.setProperty('--bg-dark', '#15131d');
+
+  const headChildren = [];
+  const windowListeners = new Map();
+
+  globalThis.HTMLElement = FakeHTMLElement;
+  globalThis.document = {
+    documentElement: docEl,
+    body: bodyEl,
+    head: {
+      append: (el) => headChildren.push(el),
+    },
+    createElement: (tag) => new FakeHTMLElement(tag),
+    querySelector: (sel) => (sel === '.app-container' ? appContainer : null),
+  };
+  globalThis.window = {
+    addEventListener: (type, fn) => windowListeners.set(type, fn),
+    removeEventListener: (type, fn) => {
+      if (windowListeners.get(type) === fn) windowListeners.delete(type);
+    },
+  };
+
+  let registeredFactory = null;
+  globalThis.OvataPlugins = {
+    define: (factory) => {
+      registeredFactory = factory;
+    },
+  };
+
+  try {
+    new Function(code)();
+    assert.equal(typeof registeredFactory, 'function');
+
+    const abort = new AbortController();
+    const disposers = [];
+    const commands = new Map();
+    const views = new Map();
+    let statusText = '';
+    let storedSettings = {};
+    let failNextSave = false;
+
+    const fakeReact = {
+      useState: (init) => [typeof init === 'function' ? init() : init, () => {}],
+      useEffect: () => {},
+      createElement: (type, props, ...children) => ({ type, props, children }),
+    };
+
+    const sdk = {
+      React: fakeReact,
+      signal: abort.signal,
+      app: {
+        files: () => [],
+        readFile: async () => '',
+        openFile: async () => {},
+        activeDocument: () => null,
+        subscribeDocument: () => () => {},
+        loadSettings: async () => structuredClone(storedSettings),
+        saveSettings: async (value, expected) => {
+          if (failNextSave || JSON.stringify(expected) !== JSON.stringify(storedSettings)) {
+            failNextSave = false;
+            throw new Error('Plugin settings changed externally; reload before saving');
+          }
+          storedSettings = structuredClone(value);
+        },
+      },
+      registerCommand: (cmd) => commands.set(cmd.id, cmd),
+      registerView: (view) => views.set(view.id, view),
+      registerPanel: () => {},
+      setStatus: (text) => {
+        statusText = text;
+      },
+      onDispose: (fn) => disposers.push(fn),
+    };
+
+    await registeredFactory(sdk);
+    await new Promise((r) => setTimeout(r, 20));
+
+    // 1. Initial activation applies default Omarchy theme and registers commands/views
+    assert.match(statusText, /Following Omarchy\)$/);
+    assert.equal(commands.has('follow-omarchy'), true);
+    assert.equal(commands.has('reload'), true);
+    assert.equal(views.has('picker'), true);
+    assert.equal(headChildren.length, 1);
+
+    // 2. Simulate Omarchy hook updating settings.json to Everforest and triggering reload
+    const parsedEverforest = parseOmarchyColorsToml(EVERFOREST_SAMPLE);
+    const everforestTokens = buildOvataTokenMap(resolveOmarchyPalette(parsedEverforest));
+    storedSettings = {
+      sourceMode: 'follow-omarchy',
+      manualPresetId: 'gruvbox',
+      omarchyPresetId: 'everforest',
+      omarchyName: 'Everforest',
+      omarchyMode: 'dark',
+      omarchyTokens: everforestTokens,
+    };
+    await commands.get('reload').run();
+    assert.equal(statusText, 'Omarchy: Everforest (dark · Following Omarchy)');
+    assert.equal(bodyEl.style.getPropertyValue('--bg-dark'), '#2d353b');
+    assert.equal(appContainer.style.getPropertyValue('--accent-primary'), '#7fbbb3');
+
+    // 3. Render picker view and click "Tokyo Night" card -> switches to manual mode
+    const renderedTree = views.get('picker').component();
+    const grid = renderedTree.children[3];
+    const tokyoButton = grid.children.find((btn) =>
+      btn.children[0].children[0].startsWith('Tokyo Night'),
+    );
+    assert.ok(tokyoButton, 'Expected Tokyo Night button in picker');
+    await tokyoButton.props.onClick();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(storedSettings.sourceMode, 'manual');
+    assert.equal(storedSettings.manualPresetId, 'tokyo-night');
+    assert.match(statusText, /^Omarchy: Tokyo Night \(dark · Manual\)$/);
+
+    // 4. Simulate external conflict during save, then recover via follow-omarchy command
+    failNextSave = true;
+    await commands.get('follow-omarchy').run();
+    await commands.get('follow-omarchy').run();
+    assert.equal(storedSettings.sourceMode, 'follow-omarchy');
+    assert.equal(statusText, 'Omarchy: Everforest (dark · Following Omarchy)');
+
+    // 5. Dispose restores prior inline properties and removes dynamic style tag
+    abort.abort();
+    for (const dispose of disposers) dispose();
+    assert.equal(headChildren[0].removed, true);
+    assert.equal(bodyEl.style.getPropertyValue('--bg-dark'), '#15131d');
+    assert.equal(appContainer.style.getPropertyValue('--accent-primary'), '');
+    assert.equal(windowListeners.size, 0);
+  } finally {
+    globalThis.HTMLElement = prevHTMLElement;
+    globalThis.document = prevDocument;
+    globalThis.window = prevWindow;
+    globalThis.OvataPlugins = prevOvataPlugins;
+  }
+});
