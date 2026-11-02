@@ -237,6 +237,10 @@ body .sidebar,
 body .fm-header {
   background-color: var(--bg-panel) !important;
 }
+
+.plugin-status:empty {
+  display: none !important;
+}
 `;
 }
 

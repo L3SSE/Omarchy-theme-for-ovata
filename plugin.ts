@@ -24,6 +24,7 @@ interface StoredThemeSettings {
 
 const HEX_OR_SAFE_TOKEN_RE = /^(?:#(?:[a-fA-F0-9]{6}|[a-fA-F0-9]{8})|none|1)$/;
 const POLL_INTERVAL_MS = 1500;
+const STATUS_TIMEOUT_MS = 10000;
 
 function isSafeTokenMap(value: unknown): value is Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -52,6 +53,8 @@ definePlugin((sdk) => {
   let lastAppliedSignature = '';
   let lastError: string | null = null;
   let pollInFlight = false;
+  let initialSyncDone = false;
+  let statusTimer: ReturnType<typeof setTimeout> | null = null;
 
   const subscribers = new Set<() => void>();
   const notify = () => {
@@ -77,19 +80,49 @@ definePlugin((sdk) => {
   const previousInlineValues = new Map<HTMLElement, Map<string, string>>();
   let styleTag: HTMLStyleElement | null = null;
 
+  const clearStatus = () => {
+    if (statusTimer !== null) {
+      clearTimeout(statusTimer);
+      statusTimer = null;
+    }
+    try {
+      sdk.setStatus('');
+    } catch {}
+  };
+
+  const showTransientStatus = (text: string) => {
+    if (disposed || sdk.signal.aborted) return;
+    if (statusTimer !== null) {
+      clearTimeout(statusTimer);
+      statusTimer = null;
+    }
+    sdk.setStatus(text);
+    statusTimer = setTimeout(() => {
+      statusTimer = null;
+      if (!disposed && !sdk.signal.aborted) {
+        sdk.setStatus('');
+      }
+    }, STATUS_TIMEOUT_MS);
+  };
+
   const renderDynamicCss = (tokens: Readonly<Record<string, string>>): string => {
     const declarations = Object.entries(tokens)
       .map(([k, v]) => `  ${k}: ${v} !important;`)
       .join('\n');
-    return `:root, body, body.theme-dark, body.theme-light, body.theme-rain, body.theme-tokyonight, .app-container, .app-container.theme-dark, .app-container.theme-light, .app-container.theme-rain, .app-container.theme-tokyonight {\n${declarations}\n}\nbody .file-manager, body .sidebar, body .fm-header { background-color: var(--bg-panel) !important; }\n`;
+    return `:root, body, body.theme-dark, body.theme-light, body.theme-rain, body.theme-tokyonight, .app-container, .app-container.theme-dark, .app-container.theme-light, .app-container.theme-rain, .app-container.theme-tokyonight {\n${declarations}\n}\nbody .file-manager, body .sidebar, body .fm-header { background-color: var(--bg-panel) !important; }\n.plugin-status:empty { display: none !important; }\n`;
   };
 
-  const applyPresetToDom = (preset: OmarchyPreset, modeLabel: ThemeSourceMode) => {
+  const applyPresetToDom = (
+    preset: OmarchyPreset,
+    modeLabel: ThemeSourceMode,
+    options?: { notifyStatus?: boolean },
+  ) => {
     if (disposed || sdk.signal.aborted) return;
     const signature = `${modeLabel}:${preset.id}:${preset.name}:${preset.mode}:${JSON.stringify(preset.tokens)}`;
+    const isChange = signature !== lastAppliedSignature;
     appliedPreset = preset;
 
-    if (signature !== lastAppliedSignature) {
+    if (isChange) {
       lastAppliedSignature = signature;
 
       if (typeof document !== 'undefined' && document.head) {
@@ -115,14 +148,18 @@ definePlugin((sdk) => {
         }
       }
 
-      const badge = modeLabel === 'follow-omarchy' ? 'Following Omarchy' : 'Manual';
-      sdk.setStatus(`Omarchy: ${preset.name} (${preset.mode} · ${badge})`);
+      const shouldNotify = options?.notifyStatus ?? initialSyncDone;
+      if (shouldNotify) {
+        const badge = modeLabel === 'follow-omarchy' ? 'Following Omarchy' : 'Manual';
+        showTransientStatus(`Omarchy: ${preset.name} (${preset.mode} · ${badge})`);
+      }
     }
     notify();
   };
 
   const restoreDom = () => {
     disposed = true;
+    clearStatus();
     if (styleTag) {
       styleTag.remove();
       styleTag = null;
@@ -206,13 +243,18 @@ definePlugin((sdk) => {
       manualPresetId = resolved.manualId;
       omarchyLivePreset = resolved.livePreset;
       lastError = null;
-      applyPresetToDom(resolved.targetPreset, resolved.mode);
+      const isFirstLoad = !initialSyncDone;
+      applyPresetToDom(resolved.targetPreset, resolved.mode, {
+        notifyStatus: isFirstLoad ? false : undefined,
+      });
+      initialSyncDone = true;
     } catch (error) {
       if (disposed || sdk.signal.aborted) return;
       lastError =
         error instanceof Error ? error.message : 'Failed to load theme settings';
       notify();
     } finally {
+      initialSyncDone = true;
       pollInFlight = false;
     }
   };
@@ -229,7 +271,8 @@ definePlugin((sdk) => {
       nextMode === 'manual'
         ? (OMARCHY_PRESETS[nextManualPresetId] ?? omarchyLivePreset)
         : omarchyLivePreset;
-    applyPresetToDom(immediateTarget, nextMode);
+    initialSyncDone = true;
+    applyPresetToDom(immediateTarget, nextMode, { notifyStatus: true });
 
     try {
       // Refresh baseline immediately before compare-and-save so external hook updates are preserved.
@@ -259,7 +302,7 @@ definePlugin((sdk) => {
         nextMode === 'manual'
           ? (OMARCHY_PRESETS[nextManualPresetId] ?? omarchyLivePreset)
           : omarchyLivePreset;
-      applyPresetToDom(finalTarget, nextMode);
+      applyPresetToDom(finalTarget, nextMode, { notifyStatus: true });
     } catch (error) {
       if (disposed || sdk.signal.aborted) return;
       lastError =
@@ -270,7 +313,7 @@ definePlugin((sdk) => {
     }
   };
 
-  applyPresetToDom(appliedPreset, sourceMode);
+  applyPresetToDom(appliedPreset, sourceMode, { notifyStatus: false });
   void reloadFromSettings();
 
   const pollTimer = setInterval(() => {
@@ -291,6 +334,7 @@ definePlugin((sdk) => {
     if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
       window.removeEventListener('focus', onWindowFocus);
     }
+    clearStatus();
     restoreDom();
   });
 
