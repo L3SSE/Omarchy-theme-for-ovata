@@ -51,8 +51,12 @@ function discoverRegisteredVaults(home) {
   return [...vaults];
 }
 
-export function syncVaultThemeSettings(vaultRoot, omarchyState) {
-  const settingsDir = join(vaultRoot, '.Ovata', 'plugin-data', 'omarchy-theme');
+export function syncVaultThemeSettings(
+  vaultRoot,
+  omarchyState,
+  pluginId = 'omarchy-theme-for-ovata',
+) {
+  const settingsDir = join(vaultRoot, '.Ovata', 'plugin-data', pluginId);
   mkdirSync(settingsDir, { recursive: true });
   const settingsPath = join(settingsDir, 'settings.json');
 
@@ -135,7 +139,12 @@ if (isMain) {
 
   for (const vaultRoot of targetVaults) {
     if (!existsSync(join(vaultRoot, '.Ovata'))) continue;
-    const { settingsPath } = syncVaultThemeSettings(vaultRoot, omarchyState);
+    const { settingsPath } = syncVaultThemeSettings(
+      vaultRoot,
+      omarchyState,
+      'omarchy-theme-for-ovata',
+    );
+    syncVaultThemeSettings(vaultRoot, omarchyState, 'omarchy-theme');
     console.log(
       `Synced Omarchy theme "${name}" (${palette.mode}) -> ${settingsPath}`,
     );

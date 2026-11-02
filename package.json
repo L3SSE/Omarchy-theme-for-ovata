@@ -1,7 +1,7 @@
 {
-  "name": "omarchy-theme",
+  "name": "omarchy-theme-for-ovata",
   "version": "1.2.0",
-  "description": "Ovata theme extension that automatically follows the active Omarchy desktop theme or lets you choose any of the 22 Omarchy presets manually.",
+  "description": "Full-workspace Omarchy Linux theme integration plugin for Ovata — syncs all 31 Ovata UI, markdown, and canvas color tokens live when your Omarchy desktop theme changes, or lets you manually choose from all 22 built-in Omarchy presets.",
   "license": "MIT",
   "author": "L3SSE",
   "type": "module",

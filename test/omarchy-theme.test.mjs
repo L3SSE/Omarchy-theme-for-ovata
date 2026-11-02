@@ -51,8 +51,8 @@ test('shipped manifest.json and styles.css conform to Ovata Plugin API v1 extens
 
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(manifest.apiVersion, 1);
-  assert.equal(manifest.id, 'omarchy-theme');
-  assert.equal(manifest.name, 'Omarchy Theme');
+  assert.equal(manifest.id, 'omarchy-theme-for-ovata');
+  assert.equal(manifest.name, 'Omarchy Theme for Ovata');
   assert.equal(manifest.version, '1.2.0');
   assert.equal(manifest.kind, 'extension');
   assert.equal(manifest.entry, 'main.js');
@@ -211,7 +211,7 @@ test('syncVaultThemeSettings writes active Omarchy theme while preserving user s
 
 test('compiled main.js bundle exercises activation, follow-omarchy live sync, manual selection, compare-and-save conflict, and clean disposal', async () => {
   const mainJsPath = fileURLToPath(
-    new URL('../dist/omarchy-theme-1.2.0/main.js', import.meta.url),
+    new URL('../dist/omarchy-theme-for-ovata-1.2.0/main.js', import.meta.url),
   );
   const code = readFileSync(mainJsPath, 'utf8');
 

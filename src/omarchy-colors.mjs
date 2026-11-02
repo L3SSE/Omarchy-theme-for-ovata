@@ -255,8 +255,8 @@ body .fm-header {
  */
 export function buildOmarchyThemeManifest(colors, options = {}) {
   const p = resolveOmarchyPalette(colors);
-  const id = options.id ?? 'omarchy-theme';
-  const name = options.name ?? 'Omarchy Theme';
+  const id = options.id ?? 'omarchy-theme-for-ovata';
+  const name = options.name ?? 'Omarchy Theme for Ovata';
   const version = options.version ?? '1.2.0';
   const author = options.author ?? 'L3SSE';
   const platforms = options.platforms ?? ['linux'];
@@ -268,7 +268,7 @@ export function buildOmarchyThemeManifest(colors, options = {}) {
     id,
     name,
     version,
-    description: `Automatically follows the active Omarchy Linux desktop palette (default: ${activePreset} ${p.mode}) or lets you choose any of the 22 Omarchy presets manually.`,
+    description: `Full-workspace Omarchy Linux theme integration for Ovata. Styles all 31 Ovata UI, editor, markdown, and canvas tokens to match your active Omarchy desktop palette in real time via Omarchy's theme-set hook, or lets you manually pin any of the 22 built-in Omarchy dark and light color presets (default: ${activePreset} ${p.mode}).`,
     author,
     platforms,
     kind: 'extension',

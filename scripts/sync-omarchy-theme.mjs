@@ -64,8 +64,8 @@ const existingManifest = existsSync(existingManifestPath)
   : {};
 
 const manifest = buildOmarchyThemeManifest(parsedColors, {
-  id: existingManifest.id ?? 'omarchy-theme',
-  name: existingManifest.name ?? 'Omarchy Theme',
+  id: existingManifest.id ?? 'omarchy-theme-for-ovata',
+  name: existingManifest.name ?? 'Omarchy Theme for Ovata',
   version: '1.2.0',
   author: existingManifest.author ?? 'L3SSE',
   platforms: existingManifest.platforms ?? ['linux'],
