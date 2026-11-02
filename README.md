@@ -40,7 +40,7 @@ It supports two seamless operating modes inside **Settings → Plugins → Omarc
    - **Direct Asset URL:** `https://github.com/L3SSE/Omarchy-theme-for-ovata/releases/download/v1.2.0/omarchy-theme-for-ovata-1.2.0.ovplugin`
 3. Verify the displayed **Package Digest** matches:
    ```text
-   sha256:deb0535bf5452dde47b197de12a79736147b038cceedb1bf12293dc3143b3d6f
+   sha256:775929b7b87edd08a17cb4957012aa42f8fd76182d5c10905f07e5f1a1b51bfd
    ```
 4. Click **Enable** and confirm **Trust this exact package and enable**.
 
@@ -70,7 +70,7 @@ This installs `~/.config/omarchy/hooks/theme-set.d/omarchy-ovata-theme.sh`.
 | Capability | Purpose |
 | :--- | :--- |
 | `ui:styles` | Loads `styles.css` so base and semantic theme tokens apply immediately on activation |
-| `ui:status` | Displays `Omarchy: <Theme Name> (<mode> · Following Omarchy / Manual)` in the plugin status line |
+| `ui:status` | Displays transient `Omarchy: <Theme Name> (<mode> · Following Omarchy / Manual)` status for 10 seconds whenever a theme change is discovered |
 | `ui:views` | Registers the **Omarchy Theme Picker** view in **Settings → Plugins** |
 | `commands:register` | Registers **Follow Omarchy active theme** and **Reload Omarchy theme** commands |
 | `settings:read-write` | Reads live Omarchy palette updates and persists `sourceMode` / `manualPresetId` via compare-and-save |
@@ -87,14 +87,14 @@ This installs `~/.config/omarchy/hooks/theme-set.d/omarchy-ovata-theme.sh`.
 | **Target Ovata Version** | `0.3.0-alpha.1` (Plugin API `v1`, Schema `v1`) |
 | **Target Ovata Source Revision** | `09e44235bd6634d02d9cf71a0a79b48043e8683c` (`workingTree: "clean"`) |
 | **Contract Fingerprint** | `sha256:c6deb1abb8a74c0a9d09ca37fc593b96cfb2eba6fbc0317faed64150ee7315d0` |
-| **Package Digest (`packageDigest`)** | `sha256:deb0535bf5452dde47b197de12a79736147b038cceedb1bf12293dc3143b3d6f` |
-| **`.ovplugin` Bundle SHA-256** | `66f45f810ecb88e43e9c69b11ca605fd0e69f38fd5f1b248a0fd413fd0b14d8f` |
+| **Package Digest (`packageDigest`)** | `sha256:775929b7b87edd08a17cb4957012aa42f8fd76182d5c10905f07e5f1a1b51bfd` |
+| **`.ovplugin` Bundle SHA-256** | `ef2c6bff7c3a7c23caf6925f5316cb51db40bfa3aef8a35b30a3399123d7f72a` |
 
 ---
 
 ## Verification & Qualification Evidence
 
-- **Static, Build & Compiled-Bundle Unit Suite (`npm test`):** `8/8` tests passing on Node `v26.8.1` (`manifest.json` & `styles.css` schema validation, deterministic palette mapping, Unicode/CRLF handling, empty/oversized input bounds, prototype-pollution/hex guards, `syncVaultThemeSettings` mode preservation, and compiled `main.js` lifecycle execution/conflict/disposal).
+- **Static, Build & Compiled-Bundle Unit Suite (`npm test`):** `9/9` tests passing on Node `v26.8.1` (`manifest.json` & `styles.css` schema validation, deterministic palette mapping, Unicode/CRLF handling, empty/oversized input bounds, prototype-pollution/hex guards, `syncVaultThemeSettings` mode preservation, compiled `main.js` lifecycle execution/conflict/disposal, and transient 10s auto-hiding status notification).
 - **OvataLab Wayland Sandbox Qualification (`plugin-lifecycle`):**
   - Run ID: `20261102T090707485Z-plugin-lifecycle-03f81647` (`laptop`, `AMD Ryzen AI 7 350 w/ Radeon 860M`, Linux `7.2.8-9-omarchy`, WebKitGTK `605.1.15`)
   - Status: `pass` (`2` Wayland bubblewrap phases, `128` synthetic notes unchanged, zero CSP/window errors)
